@@ -5,11 +5,51 @@ date: "`r Sys.Date()`"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE,error = FALSE,message = FALSE,
+                      warning = FALSE,
+                      out.height = "\\textheight",  out.widtibh = "\\textwidth")
 ```
 
-```{r packages}
+```{r packages, include=FALSE}
 library(dplyr)
 library(quantmod)
+library(ggplot2)
+library(forecast)
 ```
+
+**Importing Ford Motor Company stock statistics**
+
+```{r importing, echo=TRUE}
+#This code does it.
+getSymbols('F', src = 'yahoo', from = as.Date('2022-01-01'), to = 
+             as.Date('2025-03-20'))
+```
+**Some Ford's stock closing prices**
+
+```{r closing prices, echo=FALSE}
+F_closing <- F$F.Close
+head(F_closing)
+```
+
+*Time series plot of Ford's Closing prices*
+
+```{r ts conversion, echo=FALSE}
+F_closing_ts <- ts(F_closing, start = c(2022,1), frequency = 240)
+autoplot(F_closing_ts)
+```
+
+
+```{r daily log returns, echo=TRUE}
+#This computes the daily log returns
+F_returns <- diff(log(F_closing_ts))
+```
+
+**PART 1 EDA**
+
+**Question 1**
+
+```{r returns plot, echo=FALSE}
+autoplot(F_returns) + ggtitle('Ford Motor Stock daily log returns')
+```
+
 
