@@ -58,3 +58,8 @@ describe(F_returns)
 ```
 
 -MEAN AND VARIANCE REMAIN CONSTANT,BECAUSE RETURNS EXHIBIT STATIONARITY
+
+```{r}
+print(F_closing)
+```
+
