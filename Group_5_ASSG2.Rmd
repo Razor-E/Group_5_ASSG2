@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = FALSE,error = FALSE,message = FALSE,
 
 ```{r packages, include=FALSE}
 library(dplyr)
+library(psych)
 library(quantmod)
 library(ggplot2)
 library(forecast)
@@ -52,4 +53,8 @@ F_returns <- diff(log(F_closing_ts))
 autoplot(F_returns) + ggtitle('Ford Motor Stock daily log returns')
 ```
 
+```{r summary statistics, echo=FALSE}
+describe(F_returns)
+```
 
+-MEAN AND VARIANCE REMAIN CONSTANT,BECAUSE RETURNS EXHIBIT STATIONARITY
