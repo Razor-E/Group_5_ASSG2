@@ -1,6 +1,8 @@
 ---
 title: "Group 5 ASSG2"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "`r Sys.Date()`"
 ---
 
@@ -11,6 +13,7 @@ knitr::opts_chunk$set(echo = FALSE,error = FALSE, message = FALSE,
 ```
 
 ```{r packages, include=FALSE}
+library(pagedown) # For simulating PDFs before knitting
 library(dplyr)
 library(psych) # For describe() providing summary stats
 library(quantmod) # For importing stock from Yahoo
@@ -33,12 +36,13 @@ getSymbols('F', src = 'yahoo', from = as.Date('2022-01-01'), to =
 F_closing <- F$F.Close
 head(F_closing)
 ```
+\newpage
 
 **Time series plot of Ford's Closing prices**
 
 ```{r ts conversion, echo=FALSE}
 F_closing_ts <- ts(F_closing, start = c(2022,1), frequency = 240)
-autoplot(F_closing_ts)
+autoplot(F_closing_ts) + ggtitle('Ford Company Stock closing prices')
 ```
 
 
@@ -46,6 +50,15 @@ autoplot(F_closing_ts)
 #This computes the daily log returns
 F_returns <- diff(log(F_closing_ts))
 ```
+
+*Some daily log returns*
+
+```{r log returns, echo=FALSE}
+tail(F_returns)
+```
+
+
+\newpage
 
 **PART 1: EXPLORATORY DATA ANALYSIS**
 
@@ -55,6 +68,7 @@ F_returns <- diff(log(F_closing_ts))
 autoplot(F_returns) + 
   ggtitle('Ford Motor Stock daily log returns')
 ```
+
 
 **Summary statistics of the returns**
 
@@ -71,6 +85,8 @@ describe(F_returns)
 -Kurtosis measures the tailedness of a distribution. This shows how often extreme values occur as compared to a normal distribution (Where kurtosis = 3).
 
 *Results show that returns have a high kurtosis (returns are leptokurtic). Losses (or gains) occur more frequently than normal. This implies higher risk involved with this stock.*
+
+\newpage
 
 **ADF Stationarity test**
 
@@ -90,6 +106,8 @@ print(adf.test(F_returns))
 
 -Assuming the default significance level of 5% (0.05), The p-value shown is less than this. We therefore reject the null hypothesis in favour of the alternative one and conclude that Ford's returns are indeed stationary.
 
+\newpage
+
 **Checking for ARCH effects on squared returns**
 
 ```{r ARCH effects, echo=FALSE}
@@ -103,6 +121,8 @@ ggAcf(F_returns^2) +
 
 -ARCH effects can further be tested in depth using the Lagrange Multiplier (LM) test. 
 
+\newpage
+
 **ARCH-LM test**
 
 -Null hypothesis: No ARCH effects (homoscedasticity)
@@ -115,6 +135,8 @@ ggAcf(F_returns^2) +
 print(ArchTest(F_returns))
 ```
 -The p-value (0.9881) is significantly more than 0.05. We therefore fail to reject the Null hypothesis and conclude that Ford Company's stock returns are homoscedastic; they exhibit no ARCH effects.
+
+\newpage
 
 **PART 2 ARCH**
 
