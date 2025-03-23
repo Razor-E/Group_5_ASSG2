@@ -5,17 +5,19 @@ date: "`r Sys.Date()`"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE,error = FALSE,message = FALSE,
+knitr::opts_chunk$set(echo = FALSE,error = FALSE, message = FALSE,
                       warning = FALSE,
                       out.height = "\\textheight",  out.widtibh = "\\textwidth")
 ```
 
 ```{r packages, include=FALSE}
 library(dplyr)
-library(psych)
-library(quantmod)
-library(ggplot2)
-library(forecast)
+library(psych) # For describe() providing summary stats
+library(quantmod) # For importing stock from Yahoo
+library(ggplot2) # Visualizations
+library(forecast) # Autoplot
+library(tseries) # ADF test and more
+library(FinTS) # ARCH LM test
 ```
 
 **Importing Ford Motor Company stock statistics**
@@ -32,7 +34,7 @@ F_closing <- F$F.Close
 head(F_closing)
 ```
 
-*Time series plot of Ford's Closing prices*
+**Time series plot of Ford's Closing prices**
 
 ```{r ts conversion, echo=FALSE}
 F_closing_ts <- ts(F_closing, start = c(2022,1), frequency = 240)
@@ -45,21 +47,77 @@ autoplot(F_closing_ts)
 F_returns <- diff(log(F_closing_ts))
 ```
 
-**PART 1 EDA**
+**PART 1: EXPLORATORY DATA ANALYSIS**
 
-**Question 1**
+**Log-returns ts plot**
 
 ```{r returns plot, echo=FALSE}
-autoplot(F_returns) + ggtitle('Ford Motor Stock daily log returns')
+autoplot(F_returns) + 
+  ggtitle('Ford Motor Stock daily log returns')
 ```
+
+**Summary statistics of the returns**
 
 ```{r summary statistics, echo=FALSE}
 describe(F_returns)
 ```
 
--MEAN AND VARIANCE REMAIN CONSTANT,BECAUSE RETURNS EXHIBIT STATIONARITY
+*Ford Company's stock returns have a mean of zero and a variance of 1. This can imply stationarity since these statistics do not change over time, but further tests are needed to truly confirm this.*
 
-```{r}
-print(F_closing)
+-Skewness measures asymmetry. This tells us whether there are extreme values on the left or on the right.
+
+*The negative skewness of -1 suggests the returns have a slightly longer left tail. Large losses are therefore more likely to occur.*
+
+-Kurtosis measures the tailedness of a distribution. This shows how often extreme values occur as compared to a normal distribution (Where kurtosis = 3).
+
+*Results show that returns have a high kurtosis (returns are leptokurtic). Losses (or gains) occur more frequently than normal. This implies higher risk involved with this stock.*
+
+**ADF Stationarity test**
+
+-Null hypothesis: The Series is non-stationary
+
+*Fail to reject if P > [level of significance]*
+
+-Alternative hypothesis: The Series is stationary
+
+*Reject Null in favour of the alternative if P < [level of significance]*
+
+-The results are as shown:
+
+```{r adf, echo=FALSE}
+print(adf.test(F_returns))
 ```
+
+-Assuming the default significance level of 5% (0.05), The p-value shown is less than this. We therefore reject the null hypothesis in favour of the alternative one and conclude that Ford's returns are indeed stationary.
+
+**Checking for ARCH effects on squared returns**
+
+```{r ARCH effects, echo=FALSE}
+ggAcf(F_returns^2) + 
+  ggtitle('Autocorrelations of Ford Company squared returns')
+```
+
+-Only 7 out of 480 lags exceed the confidence interval(~1.458%). At 5% significance, 24 lags (480 * 5%) or more exceeding the confidence level would be regarded as statistically significant. We can therefore safely ignore the lags appearing above the ci as there are statistically insignificant
+
+-The above plot therefore shows no significant autocorrelations seen from the squared returns; and therefore no volatility clustering. This means that volatility (squared returns) is homoscedastic (not heteroscedastic)... the variance, or volatility, is therefore constant.
+
+-ARCH effects can further be tested in depth using the Lagrange Multiplier (LM) test. 
+
+**ARCH-LM test**
+
+-Null hypothesis: No ARCH effects (homoscedasticity)
+
+-Alternative hypothesis: There is ARCH effects (heteroscedasticity)
+
+*Reject Null hypothesis if P < [level of significance]*
+
+```{r ARCH-LM, echo=FALSE}
+print(ArchTest(F_returns))
+```
+-The p-value (0.9881) is significantly more than 0.05. We therefore fail to reject the Null hypothesis and conclude that Ford Company's stock returns are homoscedastic; they exhibit no ARCH effects.
+
+**PART 2 ARCH**
+
+**Estimating ARCH(p)**
+
 
