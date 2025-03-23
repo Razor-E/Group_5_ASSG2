@@ -142,4 +142,103 @@ print(ArchTest(F_returns))
 
 **Estimating ARCH(p)**
 
+**Estimate an ARCH(p) model with (p) determined by minimizing the AIC (p between 1 and 5).Use 
+zero-mean model.**
+
+```{r}
+library(rugarch)
+# Check your returns
+summary(F_returns)
+plot(F_returns, type = "l")
+
+# Initialize vectors to store AIC values and models
+aic_values <- numeric(5)
+models <- list()
+
+# Loop over p from 1 to 5 to find best ARCH(p)
+for (p in 1:5) {
+  # Define ARCH(p) spec as sGARCH(p, 0) with zero-mean
+  spec <- ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = c(p, 0)),
+    mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),  # Zero-mean model
+    distribution.model = "norm"  # Normal distribution
+  )
+  
+  # Fit the model to returns
+  fit <- ugarchfit(spec = spec, data = F_returns)
+  
+  # Save AIC value
+  aic_values[p] <- infocriteria(fit)[1]
+  
+  # Save model object
+  models[[p]] <- fit
+  
+  # Print AIC for each p
+  cat("ARCH(", p, ") AIC:", aic_values[p], "\n")
+}
+
+# Find best p based on minimum AIC
+best_p <- which.min(aic_values)
+cat("\nBest ARCH(p): p =", best_p, "with AIC =", aic_values[best_p], "\n")
+
+# Retrieve the best model
+best_model <- models[[best_p]]
+
+# Summary of the best model
+show(best_model)
+
+```
+**Extract and plot the conditional volatility** 
+
+```{r}
+# Extract the conditional volatility (sigma)
+conditional_volatility <- sigma(best_model)
+
+# Plot the conditional volatility over time
+plot(conditional_volatility, type = "l", col = "blue", lwd = 2,
+     main = paste("Conditional Volatility from ARCH(", best_p, ")", sep = ""),
+     xlab = "Time", ylab = "Volatility")
+
+```
+
+**Check the standardized residuals for autocorrelation**
+
+```{r}
+# Extract standardized residuals
+std_residuals <- residuals(best_model, standardize = TRUE)
+
+# Plot standardized residuals
+plot(std_residuals, type = "l", main = "Standardized Residuals", col = "darkgreen")
+
+# Ljung-Box test for autocorrelation in standardized residuals
+Box.test(std_residuals, lag = 10, type = "Ljung-Box")
+
+# Ljung-Box test for squared standardized residuals (tests for remaining ARCH effects)
+Box.test(std_residuals^2, lag = 10, type = "Ljung-Box")
+
+# ACF plots
+par(mfrow = c(1, 2))
+acf(std_residuals, main = "ACF of Std Residuals")
+acf(std_residuals^2, main = "ACF of Sq Std Residuals")
+par(mfrow = c(1, 1))
+
+```
+**Discussion: Why ARCH(p) May Be Insufficient for Financial Volatility**
+
+#Captures short-term volatility clustering poorly.
+
+ARCH models require high orders (large p) to capture persistent volatility, which can lead to overfitting and inefficient estimation.
+
+#Volatility persistence is not well-modeled.
+
+Financial returns show long memory in volatility. ARCH models do not allow for volatility to decay slowly over time like GARCH models do.
+
+#Cannot model asymmetry (leverage effect).
+
+Financial markets often exhibit asymmetric volatility (negative shocks increase volatility more than positive shocks). ARCH ignores this.
+
+#Residual diagnostics may show remaining ARCH effects.
+
+Even after fitting ARCH, squared standardized residuals may still show autocorrelation, indicating that the model hasn't captured all dynamics.
+
 
