@@ -21,6 +21,9 @@ library(ggplot2) # Visualizations
 library(forecast) # Autoplot
 library(tseries) # ADF test and more
 library(FinTS) # ARCH LM test
+library(rugarch) # For ARCH(p) models
+library(tibble)
+library(scales)
 ```
 
 **Importing Ford Motor Company stock statistics**
@@ -45,6 +48,11 @@ F_closing_ts <- ts(F_closing, start = c(2022,1), frequency = 240)
 autoplot(F_closing_ts) + ggtitle('Ford Company Stock closing prices')
 ```
 
+-Ford Company's stock prices have been going down over the course of the 4 years. A sharp drop can be seen from the start of 2022 to the middle of the same year.
+
+-Some seasonality can be seen from the middle of 2022 to the middle of 2023.
+
+-We need to eliminate these components, so that the resulting time series can be easier to work with. Computing the log returns has the same effect as differencing the log of the time series. It can be shown that these returns exhibit stationarity from tests seen further below.
 
 ```{r daily log returns, echo=TRUE}
 #This computes the daily log returns
@@ -115,9 +123,9 @@ ggAcf(F_returns^2) +
   ggtitle('Autocorrelations of Ford Company squared returns')
 ```
 
--Only 7 out of 480 lags exceed the confidence interval(~1.458%). At 5% significance, 24 lags (480 * 5%) or more exceeding the confidence level would be regarded as statistically significant. We can therefore safely ignore the lags appearing above the ci as there are statistically insignificant
+-Only 7 out of 480 lags exceed the confidence interval(~1.458% of lags). At 5% significance, 24 lags (480 * 5%) or more exceeding the confidence level would be regarded as statistically significant. We can therefore safely ignore all the lags appearing above the ci as there are statistically insignificant.
 
--The above plot therefore shows no significant autocorrelations seen from the squared returns; and therefore no volatility clustering. This means that volatility (squared returns) is homoscedastic (not heteroscedastic)... the variance, or volatility, is therefore constant.
+-The above plot therefore shows no significant autocorrelations seen from the squared returns; and therefore no volatility clustering. This means that volatility (squared returns) is homoscedastic (not heteroscedastic)... the variance, or volatility, is therefore constant. There are therefore no ARCH effects.
 
 -ARCH effects can further be tested in depth using the Lagrange Multiplier (LM) test. 
 
@@ -142,15 +150,7 @@ print(ArchTest(F_returns))
 
 **Estimating ARCH(p)**
 
-**Estimate an ARCH(p) model with (p) determined by minimizing the AIC (p between 1 and 5).Use 
-zero-mean model.**
-
-```{r}
-library(rugarch)
-# Check your returns
-summary(F_returns)
-plot(F_returns, type = "l")
-
+```{r modelling, echo=TRUE}
 # Initialize vectors to store AIC values and models
 aic_values <- numeric(5)
 models <- list()
@@ -176,30 +176,47 @@ for (p in 1:5) {
   # Print AIC for each p
   cat("ARCH(", p, ") AIC:", aic_values[p], "\n")
 }
+```
 
+-The best model has the lowest AIC which is an ARCH(5) model as shown:
+
+```{r lowest AIC, echo=FALSE}
 # Find best p based on minimum AIC
 best_p <- which.min(aic_values)
 cat("\nBest ARCH(p): p =", best_p, "with AIC =", aic_values[best_p], "\n")
-
-# Retrieve the best model
-best_model <- models[[best_p]]
-
-# Summary of the best model
-show(best_model)
-
 ```
+
 **Extract and plot the conditional volatility** 
 
-```{r}
-# Extract the conditional volatility (sigma)
-conditional_volatility <- sigma(best_model)
+```{r visualization}
+vol_data <- tibble(Time = 1:length(conditional_volatility), 
+                   Volatility = conditional_volatility)
 
-# Plot the conditional volatility over time
-plot(conditional_volatility, type = "l", col = "blue", lwd = 2,
-     main = paste("Conditional Volatility from ARCH(", best_p, ")", sep = ""),
-     xlab = "Time", ylab = "Volatility")
+num_obs <- length(conditional_volatility)
 
+date_seq <- seq.Date(from = as.Date('2022-01-01'), 
+                     to = as.Date('2025-03-20'), 
+                     length.out = num_obs)
+
+vol_data <- tibble(Time = date_seq, 
+                   Volatility = conditional_volatility)
+
+ggplot(vol_data, aes(x = Time, y = Volatility)) +
+  geom_line() +
+  labs(title = "Conditional Volatility Over Time",x = "Time",
+       y = "Estimated Volatility") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+
+*The extreme spikes around August 2024, November 2023,and around October show sudden market shocks or major financial events.* 
+
+-This means that there is higher risk involved for investors at this time. Traders of Ford's stock should have expected either a huge loss or a huge gain at this point in time.
+
+-Higher volatility is disadvantageous to investors due to a high uncertainty involved in this stock. However, this could be great for traders who profit from volatility such as option traders.
+
+-Some seasonality can be seen here. This proves that there is conditional heteroscedasticity or volatility clustering; Periods of low volatility following periods of high volatility.
 
 **Check the standardized residuals for autocorrelation**
 
@@ -223,6 +240,7 @@ acf(std_residuals^2, main = "ACF of Sq Std Residuals")
 par(mfrow = c(1, 1))
 
 ```
+
 **Discussion: Why ARCH(p) May Be Insufficient for Financial Volatility**
 
 #Captures short-term volatility clustering poorly.
