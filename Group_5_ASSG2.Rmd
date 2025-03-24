@@ -23,7 +23,7 @@ library(tseries) # ADF test and more
 library(FinTS) # ARCH LM test
 library(rugarch) # For ARCH(p) models
 library(tibble)
-library(scales)
+library(scales) # For dates
 ```
 
 **Importing Ford Motor Company stock statistics**
@@ -185,6 +185,10 @@ for (p in 1:5) {
 best_p <- which.min(aic_values)
 cat("\nBest ARCH(p): p =", best_p, "with AIC =", aic_values[best_p], "\n")
 ```
+-The AIC indicates that 5 lags were optimal, suggesting that the conditional variance is influenced by the past five squared errors. A lower AIC value suggests a better model. 
+
+-When the value of P was 5, the AIC had the lowest value.
+
 \newpage
 
 **Extract and plot the conditional volatility** 
@@ -192,9 +196,6 @@ cat("\nBest ARCH(p): p =", best_p, "with AIC =", aic_values[best_p], "\n")
 ```{r visualization}
 best_model <- models[[best_p]]
 conditional_volatility <- sigma(best_model)
-
-vol_data <- tibble(Time = 1:length(conditional_volatility), 
-                   Volatility = conditional_volatility)
 
 num_obs <- length(conditional_volatility)
 
@@ -224,27 +225,46 @@ ggplot(vol_data, aes(x = Time, y = Volatility)) +
 
 \newpage
 
-**Check the standardized residuals for autocorrelation**
+**Checking standardized residuals for autocorrelation**
 
-```{r}
+```{r standardized}
 # Extract standardized residuals
 std_residuals <- residuals(best_model, standardize = TRUE)
+```
 
-# Plot standardized residuals
-plot(std_residuals, type = "l", main = "Standardized Residuals", col = "darkgreen")
+-The Ljung Box test is used to check for this.
 
+-Null hypothesis: No correlations are present in the data
+
+*Fail to reject the Null hypothesis if P>[level of significance]*
+
+-Results at alpha=0.05 are shown below
+
+**Are there correlations in the residuals?**
+
+```{r Ljung}
 # Ljung-Box test for autocorrelation in standardized residuals
 Box.test(std_residuals, lag = 10, type = "Ljung-Box")
+```
+-The p-value shown is significantly higher than 0.05. We therefore fail to reject the null hypothesis and conclude that the standardized residuals are purely white noise.
 
+**Are there ARCH effects in the residuals?**
+
+-Squaring the standard deviation of residuals gives us its variance which is similar to volatility.
+
+-Testing whether the volatility of the residuals have any correlation also gives us the same result as shown below.
+
+```{r Ljung arch}
 # Ljung-Box test for squared standardized residuals (tests for remaining ARCH effects)
 Box.test(std_residuals^2, lag = 10, type = "Ljung-Box")
+```
+-The p-value is higher than our 5% significance level and therefore, we fail to reject the null hypothesis. There is enough evidence to conclude that volatility of residuals have no correlations. There is therefore no remaining ARCH effects.
 
+```{r Ljung plots}
 # ACF plots
 par(mfrow = c(1, 2))
-acf(std_residuals, main = "ACF of Std Residuals")
-acf(std_residuals^2, main = "ACF of Sq Std Residuals")
-par(mfrow = c(1, 1))
-
+ggAcf(std_residuals) + ggtitle("ACF of Std Residuals")
+ggAcf(std_residuals^2) + ggtitle("ACF of Sq Std Residuals")
 ```
 
 \newpage
