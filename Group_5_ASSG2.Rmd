@@ -24,6 +24,7 @@ library(FinTS) # ARCH LM test
 library(rugarch) # For ARCH(p) models
 library(tibble)
 library(scales) # For dates
+library(tsDyn) # Sign Bias Test for leverage effect
 ```
 
 **Importing Ford Motor Company stock statistics**
@@ -348,6 +349,352 @@ best_GARCH
 
 **Alpha1**-:This is the ARCH effect. It represents how much past shocks impact the current volatility.
 
-**Beta1**-:Measures how much past volatility affects current volatility.
+**Beta1**-:Measures how much past volatility affects current volatility. This is the GARCH effect
 
-**Shape** adjust how much the Student-t distribution captures asymmetry.
+**Shape** adjusts how much the Student-t distribution captures asymmetry.
+
+\newpage
+
+**Distributions and their effect on parameter estimates**
+
+**Normal Distribution**
+
+-It assumes that data follows a bell shape with no fat tail. This means it assumes data has constant skewness and kurtosis.
+
+-It therefore captures extreme returns poorly
+
+-Tends to overestimate beta1 (GARCH persistence) because it tries to explain extreme movements through long memory rather than fat tails.
+
+-Alpha1 may be artificially high to compensate for underestimated tail risk.
+
+**Student-t Distribution**
+
+-Captures fat tails and is therefore better suited for financial returns than the normal distribution. This results in a more accurate volatility clustering.
+
+-Alpha1 (ARCH) tends to be lower because large shocks are now better explained by the distribution.
+
+-Beta1 (GARCH) is lower than in the normal case, meaning volatility decays faster and isn’t overestimated.
+
+**Skewed Student-t Distribution**
+
+-Captures both fat tails and skewness.
+
+-Estimates an extra skewness parameter, which adjusts for whether large losses/gains are more frequent.
+
+-Beta1 (GARCH) is usually lower, meaning shocks decay more realistically.
+
+-It is a better fit for financial data where negative shocks are larger than positive ones such as in stock markets.
+
+\newpage
+
+**Plot of Conditional Volatilities**
+
+```{r conditional garch}
+garch_conditional_volatility <- sigma(best_GARCH)
+
+garchvolatility_num_obs <- length(garch_conditional_volatility)
+
+date_seq3 <- seq.Date(from = as.Date('2022-01-01'), 
+                     to = as.Date('2025-03-20'), 
+                     length.out = garchvolatility_num_obs)
+
+garch_data <- tibble(Time3 = date_seq3, 
+                   Volatility3 = garch_conditional_volatility)
+
+ggplot(garch_data, aes(x = Time3, y = Volatility3)) +
+  geom_line() +
+  labs(title = "Conditional Volatility",x = "Time",
+       y = "Estimated Volatility") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+-The estimated volatility appears to be decreasing from early 2022 to mid-2023. This might indicate reduced uncertainty and better market stabilization for the stock.
+
+-There are fluctuations, with volatility peaking around mid-2022 and experiencing a sharp decline afterward.
+
+-There is a noticeable increase in volatility in November 2023 and August 2024. This could indicate strong economic news or financial events.
+
+\newpage
+
+**Residual diagnostics**
+
+```{r resi}
+garch_residuals <- residuals(best_GARCH)
+ggAcf(garch_residuals)
+```
+
+-Correlations above the ci are fewer than 5% of the total lags and are therefore insignificant. All others are below the ci and therefor show no correlation with previous lags. The residuals are therefore uncorrelated.
+
+```{r}
+qqnorm(garch_residuals, main = 'Q-Q plot of residuals')
+qqline(garch_residuals, col='red')
+```
+
+-Most points align closely with the red reference line in the central portion suggesting that the bulk of the residuals follow a normal distribution.
+
+-The points deviate slightly from the reference line at both the lower and upper extremes suggesting the presence of heavy tails (fat tails) or slight skewness, which means the residuals may not be perfectly normal.
+
+\newpage
+
+**Assessing volatility clustering**
+
+```{r assess}
+std_res_garch <- residuals(best_GARCH, standardize=TRUE)
+ggAcf(std_res_garch^2)
+```
+
+-The autocorrelation of squared standardized residuals is insignificant. Volatility clustering is therefore properly captured by the GARCH(1,1) model.
+
+
+```{r box}
+Box.test(std_res_garch^2, type = "Ljung-Box")
+```
+
+The p-value 0.7271 is greater than 0.05 thus we fail to reject the null hypothesis and conclude that there is no remaining volatility clustering meaning that GARCH(1,1) successfully modeled the volatility dynamics.
+
+\newpage
+**Assessing Leverage Effects**
+
+```{r}
+ggAcf(std_res_garch^2)
+```
+
+-Negative shocks have stronger autocorrelations than positive ones, leverage effects may exist.
+
+```{r sign bias}
+res_neg <- ifelse(std_res_garch < 0, std_res_garch, 0)
+sign_bias_test <- lm(std_res_garch^2 ~ res_neg)
+summary(sign_bias_test)
+```
+
+-The coefficient for res_neg is -4.6328 and is highly significant (p-value < 2.2e-16), suggesting that negative shocks significantly impact volatility, which is characteristic of leverage effects.
+
+-Leverage effects are present: This means that negative shocks increase volatility more than positive shocks of the same magnitude.
+
+\newpage
+**Forcasting volatility for each model**
+
+```{r forecast}
+# Forecast 10 periods ahead for all models
+garch_forecasts <- lapply(garch_fits, function(fit) ugarchforecast(fit, n.ahead = 10))
+
+vol_forecasts <- lapply(garch_forecasts, function(f) sigma(f))
+
+
+vol_df <- data.frame(
+  Period = 1:10,
+  Normal = as.vector(vol_forecasts[[1]]),
+  Student_t = as.vector(vol_forecasts[[2]]),
+  Skewed_Student_t = as.vector(vol_forecasts[[3]])
+)
+
+# Plot
+ggplot(vol_df, aes(x = Period)) +
+  geom_line(aes(y = Normal, color = "Normal")) +
+  geom_line(aes(y = Student_t, color = "Student-t")) +
+  geom_line(aes(y = Skewed_Student_t, color = "Skewed Student-t")) +
+  labs(title = "GARCH Forecasted Volatility",
+       y = "Forecasted Volatility",
+       x = "Periods Ahead") +
+  theme_minimal()
+
+```
+
+-The Normal GARCH model indicates a high degree of volatility persistence, meaning past shocks have a long-lasting impact.
+
+-The t-distribution-based models predict that volatility will slowly decrease, indicating a less persistent shock effect.
+
+-The Student-t and Skewed Student-t models assume that financial returns exhibit fat tails; they capture some market risk more effectively.
+
+-The Normal model seems to overestimate long-term volatility, which could lead to overly cautious risk assessments.
+
+-The Skewed Student-t (green) and Student-t (blue) models both show a gradual decline in volatility, suggesting that these models expect market uncertainty to reduce over time.
+
+\newpage
+
+**Comparing ARCH(5) and GARCH(1,1) using likelihood ratio test**
+
+```{r likelihood}
+logL_arch <- likelihood(best_model)
+logL_garch <- likelihood(best_GARCH)
+
+# Compute Likelihood Ratio (LR) test statistic
+LR_stat <- 2 * (logL_garch - logL_arch)
+
+# p-value from Chi-square distribution with 1 df (one additional parameter in GARCH)
+p_value <- 1 - pchisq(LR_stat, df = 1)
+
+# Display results
+cat("Likelihood Ratio Test:\n")
+cat("Log-Likelihood (ARCH):", logL_arch, "\n")
+cat("Log-Likelihood (GARCH):", logL_garch, "\n")
+cat("LR Statistic:", LR_stat, "\n")
+cat("p-value:", p_value, "\n")
+
+# Decision
+if (p_value < 0.05) {
+  cat("GARCH(1,1) significantly improves model fit (Reject ARCH-only model)\n")
+} else {
+  cat("No significant improvement; ARCH(p) may be sufficient\n")
+}
+```
+
+\newpage
+**Asymmetric GJR-GARCH and News Impact Curve**
+
+**Fitting a GJR-GARCH(1,1) model**
+
+```{r gjr}
+sample_returns <- tail(F_returns, 250)
+
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+gjr_fit <- ugarchfit(spec = gjr_spec, data = sample_returns)
+
+show(gjr_fit)
+```
+
+#High p-values (greater than 0.05) mean no significant bias
+#p-value is 0.7511 → You fail to reject the null hypothesis of no remaining asymmetry.
+
+**Estimate the leverage parameter and test its significance**
+
+```{r leverage parameter}
+# View model results
+show(gjr_fit)
+
+# Extract coefficients table
+coef_table <- gjr_fit@fit$matcoef
+print(coef_table)
+```
+
+#Sign Bias test (p = 0.32): Not significant. No evidence that positive or negative shocks lead to different volatility responses.
+
+#Negative Sign Bias test (p = 0.69): Not significant. Negative shocks don't disproportionately affect volatility.
+
+#Positive Sign Bias test (p = 0.84): Not significant. Positive shocks don't disproportionately affect volatility.
+
+#Joint Effect test (p = 0.75): Not significant. There's no joint evidence of asymmetry or leverage effects.
+
+\newpage
+
+**Plotting the NIC for both GARCH(1,1) and GJR-GARCH(1,1) models**
+
+```{r fitting GJR-GARCH(1,1)}
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+gjr_fit <- ugarchfit(spec = gjr_spec, data = F_returns)
+```
+
+```{r extracting GARCH(1,1) coefficients}
+garch_coef <- coef(best_GARCH)
+omega_g <- garch_coef["omega"]
+alpha_g <- garch_coef["alpha1"]
+beta_g  <- garch_coef["beta1"]
+```
+
+```{r extracting GJR-GARCH(1,1) coefficients}
+gjr_coef <- coef(gjr_fit)
+omega_j <- gjr_coef["omega"]
+alpha_j <- gjr_coef["alpha1"]
+gamma_j <- gjr_coef["gamma1"]
+beta_j  <- gjr_coef["beta1"]
+```
+
+```{r constructing NICs}
+# Shock values from -10% to +10%
+shocks <- seq(-0.10, 0.10, by = 0.001)
+
+# Unconditional variances
+unc_var_garch <- omega_g / (1 - alpha_g - beta_g)
+unc_var_gjr <- omega_j / (1 - alpha_j - 0.5 * gamma_j - beta_j)
+
+# NIC for GARCH(1,1)
+nic_garch <- omega_g + alpha_g * shocks^2 + beta_g * unc_var_garch
+
+# NIC for GJR-GARCH(1,1)
+I_neg <- ifelse(shocks < 0, 1, 0)
+nic_gjr <- omega_j + (alpha_j + gamma_j * I_neg) * shocks^2 + beta_j * unc_var_gjr
+```
+
+```{r plotting NICs}
+nic_data <- data.frame(
+  shocks = rep(shocks, 2),
+  NIC = c(nic_garch, nic_gjr),
+  Model = rep(c("GARCH(1,1)", "GJR-GARCH(1,1)"), each = length(shocks))
+)
+
+# Plot NIC
+ggplot(nic_data, aes(x = shocks, y = NIC, color = Model)) +
+  geom_line(size = 1) +
+  labs(title = "News Impact Curve (NIC)",
+       x = "Shocks",
+       y = "Conditional Variance") +
+  theme_minimal() +
+  scale_color_manual(values = c("blue", "red"))
+```
+
+**GARCH(1,1) (Blue Curve)**
+
+-The curve is symmetric around zero.Both positive and negative shocks have the same impact on volatility.This suggests that the GARCH model does not capture asymmetric effects.
+
+**GJR-GARCH(1,1) (Red Curve)**
+
+-The curve is higher than the GARCH(1,1) curve, indicating that this model generally assumes a higher level of conditional variance.
+
+-The curve is asymmetric:
+
+-For negative shocks (left side), volatility is higher compared to positive shocks of the same magnitude.
+
+-This confirms the leverage effect: bad news (negative returns) increases volatility more than good news (positive returns).
+
+\newpage
+
+**Using the fitted GJR-GARCH(1,1) model to forecast volatility**
+
+```{r fv}
+gjr_forecast <- ugarchforecast(gjr_fit, n.ahead = 10)
+
+# Extract sigma (volatility forecasts)
+gjr_volatility <- as.numeric(sigma(gjr_forecast))
+
+# Extracting standard deviation of conditional variance forecasts
+gjr_variance <- as.numeric(fitted(gjr_forecast)^2)
+
+gjr_upper <- gjr_volatility + 1.96 * sqrt(gjr_variance)  # Upper bound (95% CI)
+gjr_lower <- gjr_volatility - 1.96 * sqrt(gjr_variance)  # Lower bound (95% CI)
+```
+
+```{r plot fvnic}
+forecast_data <- data.frame(
+  Days = 1:10,
+  Volatility = gjr_volatility,
+  Upper_CI = gjr_upper,
+  Lower_CI = gjr_lower
+)
+
+# Plot
+ggplot(forecast_data, aes(x = Days, y = Volatility)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = Lower_CI, ymax = Upper_CI), fill = "blue", alpha = 0.2) +
+  ggtitle("GJR-GARCH(1,1) Forecasted Volatility with 95% CI") +
+  xlab("Trading Days Ahead") +
+  ylab("Forecasted Volatility") +
+  theme_minimal()
+```
+
+-The forecasted volatility remains almost constant over time, suggesting a mean-reverting behavior in volatility.
+
+-The confidence intervals expand initially but stabilize over time.This suggests that uncertainty in forecasting is higher in the short term but stabilizes as the model converges.
+
+-The GJR model accounts for leverage effects, meaning negative shocks (bad news) impact volatility more than positive shocks.
