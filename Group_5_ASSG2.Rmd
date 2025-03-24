@@ -260,12 +260,18 @@ Box.test(std_residuals^2, lag = 10, type = "Ljung-Box")
 ```
 -The p-value is higher than our 5% significance level and therefore, we fail to reject the null hypothesis. There is enough evidence to conclude that volatility of residuals have no correlations. There is therefore no remaining ARCH effects.
 
+\newpage
+
 ```{r Ljung plots}
 # ACF plots
 par(mfrow = c(1, 2))
-ggAcf(std_residuals) + ggtitle("ACF of Std Residuals")
-ggAcf(std_residuals^2) + ggtitle("ACF of Sq Std Residuals")
+ggAcf(std_residuals) + ggtitle("Std Residuals")
+ggAcf(std_residuals^2) + ggtitle("Volatility of Residuals")
 ```
+
+-In both these plots, there is no significant spikes above the confidence intervals indicating no potential autocorrelation.
+
+-The model is therefore well specified and there is no linear dependence in the residuals.
 
 \newpage
 
@@ -287,4 +293,61 @@ Financial markets often exhibit asymmetric volatility (negative shocks increase 
 
 Even after fitting ARCH, squared standardized residuals may still show autocorrelation, indicating that the model hasn't captured all dynamics.
 
+\newpage
 
+**PART 3: GARCH**
+
+**Selecting the best GARCH(1,1) model with AR(1)**
+
+```{r defining models}
+garch_specs <- list(
+  normal = ugarchspec(variance.model = list(model = "sGARCH",
+                                            garchOrder = c(1,1)),
+                      mean.model = list(armaOrder = c(1,0)), #AR(1)
+                      distribution.model = "norm"), #Normal
+
+  student_t = ugarchspec(variance.model = list(model = "sGARCH",
+                                               garchOrder = c(1,1)),
+                         mean.model = list(armaOrder = c(1,0)),
+                         distribution.model = "std"),  # Student-t
+
+  skewed_student_t = ugarchspec(variance.model = list(model="sGARCH",
+                                                      garchOrder =
+                                                        c(1,1)),
+                                mean.model = list(armaOrder =c(1,0)),
+                                distribution.model = "sstd")  # Skewed Student-t
+)
+```
+
+```{r fitting}
+garch_fits <- lapply(garch_specs, 
+                     function(spec) ugarchfit(spec, data =F_returns))
+```
+
+```{r comparing}
+bic_values <- sapply(garch_fits,
+                     function(model)infocriteria(model)[2])
+best_model_name <- names(which.min(bic_values))
+best_GARCH <- garch_fits[[best_model_name]]
+bic_values
+cat("Best Model Based on BIC:", best_model_name, "\n")
+```
+-The best GARCH(1,1) model features the Student-t as a distribution to use for the conditional density as it has the lowest BIC values.
+
+**Interpreting Parameters**
+
+```{r parameters}
+best_GARCH
+```
+
+**mu**-:Expected returns of the time series. The mean returns
+
+**ar1**-:This is the Autoregressive term in the G**AR**CH model. It measures how much past returns influence current returns.
+
+**Omega**-:The constant in the variance equation; a higher value suggests persistent volatility.
+
+**Alpha1**-:This is the ARCH effect. It represents how much past shocks impact the current volatility.
+
+**Beta1**-:Measures how much past volatility affects current volatility.
+
+**Shape** adjust how much the Student-t distribution captures asymmetry.
