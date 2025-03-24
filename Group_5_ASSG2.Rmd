@@ -286,5 +286,161 @@ Financial markets often exhibit asymmetric volatility (negative shocks increase 
 #Residual diagnostics may show remaining ARCH effects.
 
 Even after fitting ARCH, squared standardized residuals may still show autocorrelation, indicating that the model hasn't captured all dynamics.
+**Part 4** 
+**Asymmetric GJR-GARCH** 
+#Fit a GJR-GARCH(1,1) model with a Student-t distribution (Include an AR(1) mean model). 
+
+```{r}
+
+library(rugarch)
+
+# Use a smaller sample if needed
+sample_returns <- tail(F_returns, 250)
+
+# Specify the GJR-GARCH model
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+# Fit the model
+gjr_fit <- ugarchfit(spec = gjr_spec, data = sample_returns)
+
+# Show the results
+show(gjr_fit)
+
+# Plot specific diagnostics to avoid freezing
+par(mfrow = c(1, 1))
+plot(gjr_fit, which = 1)  # Try different "which" numbers
+
+```
+#High p-values (greater than 0.05) mean no significant bias
+#p-value is 0.7511 → You fail to reject the null hypothesis of no remaining asymmetry.
+
+
+**Estimate the leverage parameter and test its significance**
+
+```{r}
+# View model results
+show(gjr_fit)
+
+# Extract coefficients table
+coef_table <- gjr_fit@fit$matcoef
+print(coef_table)
+
+
+```
+#Sign Bias test (p = 0.32): Not significant. No evidence that positive or negative shocks lead to different volatility responses.
+
+#Negative Sign Bias test (p = 0.69): Not significant. Negative shocks don't disproportionately affect volatility.
+
+#Positive Sign Bias test (p = 0.84): Not significant. Positive shocks don't disproportionately affect volatility.
+
+#Joint Effect test (p = 0.75): Not significant. There's no joint evidence of asymmetry or leverage effects.
+
+**Construct and plot the NIC for both GARCH(1,1) and GJR-GARCH(1,1) models, evaluating shocks 
+from -10% to +10%. Comment on  the differences** 
+
+```{r}
+# =====================================
+# 1. Fit GARCH(1,1) model with Student-t distribution
+# =====================================
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+garch_fit <- ugarchfit(spec = garch_spec, data = F_returns)
+show(garch_fit)
+
+# =====================================
+# 2. Fit GJR-GARCH(1,1) model with Student-t distribution
+# =====================================
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+gjr_fit <- ugarchfit(spec = gjr_spec, data = F_returns)
+show(gjr_fit)
+
+# =====================================
+# 3. Extract coefficients
+# =====================================
+# GARCH(1,1)
+garch_coef <- coef(garch_fit)
+omega_g <- garch_coef["omega"]
+alpha_g <- garch_coef["alpha1"]
+beta_g  <- garch_coef["beta1"]
+
+# GJR-GARCH(1,1)
+gjr_coef <- coef(gjr_fit)
+omega_j <- gjr_coef["omega"]
+alpha_j <- gjr_coef["alpha1"]
+gamma_j <- gjr_coef["gamma1"]
+beta_j  <- gjr_coef["beta1"]
+
+# =====================================
+# 4. Construct and plot the NIC (News Impact Curve)
+# =====================================
+# Shock values from -10% to +10%
+shocks <- seq(-0.10, 0.10, by = 0.001)
+
+# Unconditional variances
+unc_var_garch <- omega_g / (1 - alpha_g - beta_g)
+unc_var_gjr <- omega_j / (1 - alpha_j - 0.5 * gamma_j - beta_j)
+
+# NIC for GARCH(1,1)
+nic_garch <- omega_g + alpha_g * shocks^2 + beta_g * unc_var_garch
+
+# NIC for GJR-GARCH(1,1)
+I_neg <- ifelse(shocks < 0, 1, 0)
+nic_gjr <- omega_j + (alpha_j + gamma_j * I_neg) * shocks^2 + beta_j * unc_var_gjr
+
+# Plot the NICs
+plot(shocks, nic_garch, type = "l", col = "blue", lwd = 2, 
+     ylab = "Conditional Variance", xlab = "Shock", 
+     main = "News Impact Curve: GARCH(1,1) vs GJR-GARCH(1,1)")
+lines(shocks, nic_gjr, col = "red", lwd = 2)
+legend("topright", legend = c("GARCH(1,1)", "GJR-GARCH(1,1)"),
+       col = c("blue", "red"), lwd = 2)
+
+# =====================================
+# 5. Leverage Effect Interpretation
+# =====================================
+# Leverage parameter is gamma_j
+cat("Leverage Parameter (gamma1) for GJR-GARCH(1,1):", gamma_j, "\n")
+
+# Test significance
+summary(gjr_fit)
+```
+#blue curve is symmetric-It means that the model reacts equally to both positive and negative shocks.
+Whether the shock is +5% or -5%, the increase in volatility is the same.
+#GARCH(1,1) and GJR-GARCH(1,1) curves are very similar.
+This suggests that Ford's stock returns don't show strong asymmetric volatility effects (at least in this sample period).
+#both positive and negative shocks have similar impacts on volatility.
+
+**Use the fitted GJR-GARCH(1,1) model to forecast volatility for the next 10 trading days, plot the 
+forecasted volatility with confidence intervals.**
+
+```{r}
+# 4. Forecast Volatility for Next 10 Trading Days with GJR-GARCH(1,1)
+# --------------------------
+gjr_forecast <- ugarchforecast(gjr_fit, n.ahead = 10)
+
+# Extract sigma (volatility forecasts)
+sigma_forecast <- sigma(gjr_forecast)
+
+# Plot forecasted volatility
+forecast_days <- 1:10
+plot(forecast_days, sigma_forecast, type = "o", col = "red", pch = 16,
+     xlab = "Days Ahead", ylab = "Forecasted Volatility",
+     main = "10-Day Volatility Forecast (GJR-GARCH(1,1))")
+
+```
+#The plot illustrates a downward trend in forecasted volatility, suggesting that the model predicts a decrease in market fluctuations over the specified period. The red dots likely represent the forecasted volatility values for each day, and while confidence intervals aren't explicitly shown, they would typically be represented as shaded areas or lines around the forecasted values, indicating the range of uncertainty in the predictions.
 
 
