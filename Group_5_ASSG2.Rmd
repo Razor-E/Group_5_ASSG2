@@ -185,10 +185,14 @@ for (p in 1:5) {
 best_p <- which.min(aic_values)
 cat("\nBest ARCH(p): p =", best_p, "with AIC =", aic_values[best_p], "\n")
 ```
+\newpage
 
 **Extract and plot the conditional volatility** 
 
 ```{r visualization}
+best_model <- models[[best_p]]
+conditional_volatility <- sigma(best_model)
+
 vol_data <- tibble(Time = 1:length(conditional_volatility), 
                    Volatility = conditional_volatility)
 
@@ -218,6 +222,8 @@ ggplot(vol_data, aes(x = Time, y = Volatility)) +
 
 -Some seasonality can be seen here. This proves that there is conditional heteroscedasticity or volatility clustering; Periods of low volatility following periods of high volatility.
 
+\newpage
+
 **Check the standardized residuals for autocorrelation**
 
 ```{r}
@@ -240,6 +246,8 @@ acf(std_residuals^2, main = "ACF of Sq Std Residuals")
 par(mfrow = c(1, 1))
 
 ```
+
+\newpage
 
 **Discussion: Why ARCH(p) May Be Insufficient for Financial Volatility**
 
