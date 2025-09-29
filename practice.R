@@ -1,1 +1,1 @@
-print("hello from Edwin's PC")
+print("hello from Edwin")
